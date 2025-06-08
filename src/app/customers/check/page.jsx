@@ -10,9 +10,29 @@ async function fetchCustomer(id) {
   return res.json();
 }
 
-export default async function ReadPage({ query }) {
-  const { id } = query;
+export default async function ReadPage({ searchParams }) {
+  // searchParamsからcustomer_idを取得
+  const id = searchParams?.customer_id;
+  
+  // idが存在しない場合のエラーハンドリング
+  if (!id) {
+    return (
+      <div className="alert alert-error">
+        Customer IDが指定されていません
+      </div>
+    );
+  }
+
   const customerInfo = await fetchCustomer(id);
+
+  // customerInfoが空の場合のエラーハンドリング
+  if (!customerInfo || customerInfo.length === 0) {
+    return (
+      <div className="alert alert-error">
+        顧客情報が見つかりません
+      </div>
+    );
+  }
 
   return (
     <>
