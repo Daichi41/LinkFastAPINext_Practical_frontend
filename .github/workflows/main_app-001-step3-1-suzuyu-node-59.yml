@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: read #This is required for actions/checkout
 
     steps:
       - uses: actions/checkout@v4
@@ -22,32 +22,25 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '20.x'
-          cache: 'npm'
 
       - name: npm install, build, and test
+      #1
         env:
           NEXT_PUBLIC_API_ENDPOINT: ${{ secrets.NEXT_PUBLIC_API_ENDPOINT }}
         run: |
-          npm ci
-          npm run build
+          npm install
+          npm run build --if-present
           npm run test --if-present
 
+      #2
       - name: Copy artifact for deployment job
         run: |
-          mkdir -p deploy
-          # standalone ビルドのコピー
-          cp -r ./.next/standalone/. ./deploy/
-          # static ファイルのコピー
-          cp -r ./.next/static/. ./deploy/.next/static/
-          # public ファイルのコピー（存在する場合）
-          if [ -d "./public" ]; then
-            cp -r ./public/. ./deploy/public/
-          fi
-          # package.json のコピー（依存関係情報のため）
-          cp package.json ./deploy/
+          mkdir deploy
+          cp -r ./.next/standalone/. ./deploy
+          cp -r ./.next/static/. ./deploy/.next/static
 
       - name: Zip artifact for deployment
-        run: cd deploy && zip -r ../release.zip .
+        run: zip release.zip ./deploy -r #3
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -69,7 +62,7 @@ jobs:
           name: node-app
 
       - name: Unzip artifact for deployment
-        run: unzip release.zip -d deploy
+        run: unzip release.zip
       
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
@@ -77,5 +70,5 @@ jobs:
         with:
           app-name: 'app-001-step3-1-suzuyu-node-59'
           slot-name: 'Production'
-          package: ./deploy
+          package: ./deploy #4
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_C3BBF4D04B664D268D22F97475190E06 }}
