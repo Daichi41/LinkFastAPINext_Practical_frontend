@@ -89,40 +89,26 @@ jobs:
           fi
           
           # Create web.config for proper Next.js routing
-          cat > deploy/web.config << 'EOF'
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <system.webServer>
-    <handlers>
-      <add name="iisnode" path="server.js" verb="*" modules="iisnode"/>
-    </handlers>
-    <rewrite>
-      <rules>
-        <rule name="NodeInspector" patternSyntax="ECMAScript" stopProcessing="true">
-          <match url="^server.js\/debug[\/]?" />
-        </rule>
-        <rule name="StaticContent">
-          <action type="Rewrite" url="public{REQUEST_URI}"/>
-        </rule>
-        <rule name="DynamicContent">
-          <conditions>
-            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="True"/>
-          </conditions>
-          <action type="Rewrite" url="server.js"/>
-        </rule>
-      </rules>
-    </rewrite>
-    <security>
-      <requestFiltering>
-        <hiddenSegments>
-          <remove segment="bin"/>
-        </hiddenSegments>
-      </requestFiltering>
-    </security>
-    <httpErrors existingResponse="PassThrough" />
-  </system.webServer>
-</configuration>
-EOF
+          echo '<?xml version="1.0" encoding="utf-8"?>' > deploy/web.config
+          echo '<configuration>' >> deploy/web.config
+          echo '  <system.webServer>' >> deploy/web.config
+          echo '    <handlers>' >> deploy/web.config
+          echo '      <add name="iisnode" path="server.js" verb="*" modules="iisnode"/>' >> deploy/web.config
+          echo '    </handlers>' >> deploy/web.config
+          echo '    <rewrite>' >> deploy/web.config
+          echo '      <rules>' >> deploy/web.config
+          echo '        <rule name="DynamicContent">' >> deploy/web.config
+          echo '          <conditions>' >> deploy/web.config
+          echo '            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="True"/>' >> deploy/web.config
+          echo '          </conditions>' >> deploy/web.config
+          echo '          <action type="Rewrite" url="server.js"/>' >> deploy/web.config
+          echo '        </rule>' >> deploy/web.config
+          echo '      </rules>' >> deploy/web.config
+          echo '    </rewrite>' >> deploy/web.config
+          echo '    <httpErrors existingResponse="PassThrough" />' >> deploy/web.config
+          echo '  </system.webServer>' >> deploy/web.config
+          echo '</configuration>' >> deploy/web.config
+          echo "Created web.config file"
           
           # List deployed files for verification
           echo "Deployment package contents:"
