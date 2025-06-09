@@ -13,197 +13,30 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # This is required for actions/checkout
+      contents: read #This is required for actions/checkout
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Node.js version
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v3
         with:
           node-version: '20.x'
-          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build application
-        env:
-          NEXT_PUBLIC_API_ENDPOINT: ${{ secrets.NEXT_PUBLIC_API_ENDPOINT }}
+      - name: npm install, build, and test
         run: |
-          if npm run build --silent 2>/dev/null; then
-            echo "Build completed successfully"
-          else
-            echo "Build script not found or failed"
-            exit 1
-          fi
+          npm install
+          npm run build --if-present
+          npm run test --if-present
 
-      - name: Run tests (if available)
-        run: |
-          if npm run test --silent 2>/dev/null; then
-            echo "Tests completed successfully"
-          else
-            echo "No test script found or tests failed - continuing deployment"
-          fi
-        continue-on-error: true
-
-      - name: Debug build output
-        run: |
-          echo "=== Build Output Debug ==="
-          echo "Contents of .next directory:"
-          ls -la .next/ || echo ".next directory not found"
-          echo ""
-          echo "Contents of .next/standalone directory:"
-          ls -la .next/standalone/ || echo ".next/standalone directory not found"
-          echo ""
-          echo "Looking for server files:"
-          find .next -name "*.js" -type f | head -10
-          echo ""
-
-      - name: Prepare deployment package
-        run: |
-          echo "Preparing deployment files..."
-          mkdir -p deploy/.next
-          
-          # Copy standalone build files
-          if [ -d ".next/standalone" ]; then
-            cp -r .next/standalone/* deploy/
-            echo "Copied standalone files"
-            
-            # Debug: Show what was copied
-            echo "Files in deploy directory after copying standalone:"
-            ls -la deploy/
-          else
-            echo "Error: .next/standalone directory not found"
-            exit 1
-          fi
-          
-          # Copy static files
-          if [ -d ".next/static" ]; then
-            cp -r .next/static deploy/.next/static
-            echo "Copied static files"
-          else
-            echo "Warning: .next/static directory not found"
-          fi
-          
-          # Copy public files (if they exist)
-          if [ -d "public" ]; then
-            cp -r public deploy/public
-            echo "Copied public files"
-          else
-            echo "No public directory found"
-          fi
-          
-          # Create or find the correct server entry point
-          echo "Looking for entry point file..."
-          if [ -f "deploy/server.js" ]; then
-            echo "✓ server.js found"
-          elif [ -f "deploy/index.js" ]; then
-            echo "✓ index.js found, creating server.js symlink"
-            ln -s index.js deploy/server.js
-          else
-            echo "⚠ Neither server.js nor index.js found"
-            echo "Available JS files in deploy:"
-            find deploy -name "*.js" -type f
-            
-            # Try to find any main entry point
-            if [ -f "deploy/package.json" ]; then
-              echo "Checking package.json for main entry point:"
-              cat deploy/package.json | grep -E '"main"|"start"' || echo "No main/start script found"
-            fi
-            
-            # Create a custom startup file for Azure App Service
-            echo "Creating Azure-specific startup file..."
-            cat > deploy/server.js << 'AZURESERVER'
-const { createServer } = require('http')
-const { parse } = require('url')
-
-const dev = false
-const hostname = process.env.WEBSITE_HOSTNAME || 'localhost'
-const port = process.env.PORT || 8080
-
-console.log(`Starting Next.js app on ${hostname}:${port}`)
-
-let app
-try {
-  const next = require('next')
-  app = next({ 
-    dev: false,
-    hostname,
-    port,
-    dir: process.cwd()
-  })
-} catch (error) {
-  console.error('Failed to initialize Next.js:', error)
-  process.exit(1)
-}
-
-const handle = app.getRequestHandler()
-
-app.prepare().then(() => {
-  const server = createServer(async (req, res) => {
-    try {
-      const parsedUrl = parse(req.url, true)
-      await handle(req, res, parsedUrl)
-    } catch (err) {
-      console.error('Error occurred handling', req.url, err)
-      res.statusCode = 500
-      res.end('Internal server error')
-    }
-  })
-
-  server.listen(port, (err) => {
-    if (err) throw err
-    console.log(`Ready on http://${hostname}:${port}`)
-  })
-}).catch((ex) => {
-  console.error('Failed to prepare Next.js app:', ex)
-  process.exit(1)
-})
-AZURESERVER
-            echo "✓ Created basic server.js file"
-          fi
-          
-          # Create web.config for proper Next.js routing
-          echo '<?xml version="1.0" encoding="utf-8"?>' > deploy/web.config
-          echo '<configuration>' >> deploy/web.config
-          echo '  <system.webServer>' >> deploy/web.config
-          echo '    <handlers>' >> deploy/web.config
-          echo '      <add name="iisnode" path="server.js" verb="*" modules="iisnode"/>' >> deploy/web.config
-          echo '    </handlers>' >> deploy/web.config
-          echo '    <rewrite>' >> deploy/web.config
-          echo '      <rules>' >> deploy/web.config
-          echo '        <rule name="DynamicContent">' >> deploy/web.config
-          echo '          <conditions>' >> deploy/web.config
-          echo '            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="True"/>' >> deploy/web.config
-          echo '          </conditions>' >> deploy/web.config
-          echo '          <action type="Rewrite" url="server.js"/>' >> deploy/web.config
-          echo '        </rule>' >> deploy/web.config
-          echo '      </rules>' >> deploy/web.config
-          echo '    </rewrite>' >> deploy/web.config
-          echo '    <httpErrors existingResponse="PassThrough" />' >> deploy/web.config
-          echo '  </system.webServer>' >> deploy/web.config
-          echo '</configuration>' >> deploy/web.config
-          echo "Created web.config file"
-          
-          # List deployed files for verification
-          echo "Deployment package contents:"
-          ls -la deploy/
-
-      - name: Create deployment archive
-        run: |
-          cd deploy
-          zip -r ../release.zip .
-          cd ..
-          echo "Archive created: $(ls -lh release.zip)"
+      - name: Zip artifact for deployment
+        run: zip release.zip ./* -r
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
           path: release.zip
-          retention-days: 1
 
   deploy:
     runs-on: ubuntu-latest
@@ -218,22 +51,14 @@ AZURESERVER
         with:
           name: node-app
 
-      - name: Extract deployment package
-        run: |
-          unzip release.zip -d deploy
-          echo "Extracted files:"
-          ls -la deploy/
+      - name: Unzip artifact for deployment
+        run: unzip release.zip
       
-      - name: Deploy to Azure Web App
+      - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'app-001-step3-1-suzuyu-node-59'
           slot-name: 'Production'
-          package: ./deploy
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_C3BBF4D04B664D268D22F97475190E06 }}
-
-      - name: Deployment summary
-        run: |
-          echo "🚀 Deployment completed successfully!"
-          echo "App URL: ${{ steps.deploy-to-webapp.outputs.webapp-url }}"
+          package: .
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9CACF9AF58964DB3996B733D5E9CEBA3 }}
