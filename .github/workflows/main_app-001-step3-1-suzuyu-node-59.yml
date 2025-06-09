@@ -13,120 +13,30 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # This is required for actions/checkout
+      contents: read #This is required for actions/checkout
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Node.js version
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v3
         with:
           node-version: '20.x'
-          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build application
-        env:
-          NEXT_PUBLIC_API_ENDPOINT: ${{ secrets.NEXT_PUBLIC_API_ENDPOINT }}
+      - name: npm install, build, and test
         run: |
-          if npm run build --silent 2>/dev/null; then
-            echo "Build completed successfully"
-          else
-            echo "Build script not found or failed"
-            exit 1
-          fi
+          npm install
+          npm run build --if-present
+          npm run test --if-present
 
-      - name: Run tests (if available)
-        run: |
-          if npm run test --silent 2>/dev/null; then
-            echo "Tests completed successfully"
-          else
-            echo "No test script found or tests failed - continuing deployment"
-          fi
-        continue-on-error: true
-
-      - name: Prepare deployment package
-        run: |
-          echo "Preparing deployment files..."
-          mkdir -p deploy/.next
-          
-          # Copy standalone build files
-          if [ -d ".next/standalone" ]; then
-            cp -r .next/standalone/* deploy/
-            echo "Copied standalone files"
-          else
-            echo "Error: .next/standalone directory not found"
-            exit 1
-          fi
-          
-          # Copy static files
-          if [ -d ".next/static" ]; then
-            cp -r .next/static deploy/.next/static
-            echo "Copied static files"
-          else
-            echo "Warning: .next/static directory not found"
-          fi
-          
-          # Copy public files (if they exist)
-          if [ -d "public" ]; then
-            cp -r public deploy/public
-            echo "Copied public files"
-          else
-            echo "No public directory found"
-          fi
-          
-          # Create server.js symlink for Azure App Service
-          if [ -f "deploy/server.js" ]; then
-            echo "server.js already exists"
-          elif [ -f "deploy/index.js" ]; then
-            ln -s index.js deploy/server.js
-            echo "Created server.js symlink to index.js"
-          else
-            echo "Warning: Neither server.js nor index.js found"
-          fi
-          
-          # Create web.config for proper Next.js routing
-          echo '<?xml version="1.0" encoding="utf-8"?>' > deploy/web.config
-          echo '<configuration>' >> deploy/web.config
-          echo '  <system.webServer>' >> deploy/web.config
-          echo '    <handlers>' >> deploy/web.config
-          echo '      <add name="iisnode" path="server.js" verb="*" modules="iisnode"/>' >> deploy/web.config
-          echo '    </handlers>' >> deploy/web.config
-          echo '    <rewrite>' >> deploy/web.config
-          echo '      <rules>' >> deploy/web.config
-          echo '        <rule name="DynamicContent">' >> deploy/web.config
-          echo '          <conditions>' >> deploy/web.config
-          echo '            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="True"/>' >> deploy/web.config
-          echo '          </conditions>' >> deploy/web.config
-          echo '          <action type="Rewrite" url="server.js"/>' >> deploy/web.config
-          echo '        </rule>' >> deploy/web.config
-          echo '      </rules>' >> deploy/web.config
-          echo '    </rewrite>' >> deploy/web.config
-          echo '    <httpErrors existingResponse="PassThrough" />' >> deploy/web.config
-          echo '  </system.webServer>' >> deploy/web.config
-          echo '</configuration>' >> deploy/web.config
-          echo "Created web.config file"
-          
-          # List deployed files for verification
-          echo "Deployment package contents:"
-          ls -la deploy/
-
-      - name: Create deployment archive
-        run: |
-          cd deploy
-          zip -r ../release.zip .
-          cd ..
-          echo "Archive created: $(ls -lh release.zip)"
+      - name: Zip artifact for deployment
+        run: zip release.zip ./* -r
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
           path: release.zip
-          retention-days: 1
 
   deploy:
     runs-on: ubuntu-latest
@@ -141,22 +51,14 @@ jobs:
         with:
           name: node-app
 
-      - name: Extract deployment package
-        run: |
-          unzip release.zip -d deploy
-          echo "Extracted files:"
-          ls -la deploy/
+      - name: Unzip artifact for deployment
+        run: unzip release.zip
       
-      - name: Deploy to Azure Web App
+      - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'app-001-step3-1-suzuyu-node-59'
           slot-name: 'Production'
-          package: ./deploy
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_C3BBF4D04B664D268D22F97475190E06 }}
-
-      - name: Deployment summary
-        run: |
-          echo "🚀 Deployment completed successfully!"
-          echo "App URL: ${{ steps.deploy-to-webapp.outputs.webapp-url }}"
+          package: .
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_CA42AE3E2B2942C9B874FF7CCD95A6AE }}
